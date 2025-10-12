@@ -13,7 +13,7 @@ const config = {
   environment: process.env.NODE_ENV || 'development',
 
   // Версия приложения
-  release: process.env.npm_package_version || '1.0.1',
+  release: process.env.npm_package_version || '1.3.1',
 
   // Отключаем telemetry для Sentry
   telemetry: false,
@@ -76,7 +76,7 @@ const config = {
   initialScope: {
     tags: {
       project: 'normaldance',
-      version: process.env.npm_package_version || '1.0.1',
+      version: process.env.npm_package_version || '1.3.1',
       environment: process.env.NODE_ENV || 'development',
     },
     user: process.env.SENTRY_USER ? {
@@ -120,7 +120,7 @@ const config = {
 
   // Настройки release
   release: {
-    name: process.env.npm_package_version || '1.0.1',
+    name: process.env.npm_package_version || '1.3.1',
     dist: process.env.VERCEL_GITHUB_COMMIT_SHA || process.env.VERCEL_GIT_COMMIT_SHA,
   },
 

@@ -579,10 +579,10 @@ export class SentryIntegration {
 const sentryIntegration = new SentryIntegration(
   {
     environment: process.env.NODE_ENV || 'development',
-    release: process.env.npm_package_version || '1.0.1',
+    release: process.env.npm_package_version || '1.3.1',
     tags: {
       project: 'normaldance',
-      version: process.env.npm_package_version || '1.0.1',
+      version: process.env.npm_package_version || '1.3.1',
     },
     extra: {
       url: typeof window !== 'undefined' ? window.location.href : '',
