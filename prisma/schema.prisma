@@ -19,7 +19,7 @@ model User {
   bio         String?
   avatar      String?
   banner      String?
-  wallet      String?     // Web3 wallet address
+  wallet      String?     @unique // Web3 wallet address (normalized)
   level       UserLevel   @default(BRONZE)
   balance     Float       @default(0) // $NDT token balance
   tonBalance  Float       @default(0) // TON balance
@@ -72,7 +72,7 @@ model Track {
   duration    Int      // Duration in seconds
   playCount   Int      @default(0)
   likeCount   Int      @default(0)
-  ipfsHash    String   // IPFS hash for audio file
+  ipfsHash    String   @db.VarChar(255) // IPFS hash for audio file
   metadata    Json     // Additional metadata (BPM, key, etc.)
   price       Float?   // Price in $NDT (null = free)
   isExplicit  Boolean  @default(false)

@@ -30,14 +30,14 @@ const nextConfig: NextConfig = {
   // Вне experimental начиная с Next 15
   serverExternalPackages: [],
 
-  // Конфигурация ESLint (выключен для ускорения сборки)
+  // Конфигурация ESLint (включено для качества кода)
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
   },
 
-  // Конфигурация TypeScript (выключен для ускорения сборки)
+  // Конфигурация TypeScript (включено для безопасности типов)
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
 
   // Оптимизация кэширования

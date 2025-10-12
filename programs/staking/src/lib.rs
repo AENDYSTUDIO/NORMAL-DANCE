@@ -12,21 +12,26 @@ pub mod staking {
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
         let staking_pool = &mut ctx.accounts.staking_pool;
         let authority = &ctx.accounts.authority;
-        
+
         staking_pool.authority = authority.key();
         staking_pool.total_staked = 0;
         staking_pool.total_rewards_distributed = 0;
-        
+
         // Устанавливаем уровни стейкинга
         staking_pool.bronze_threshold = 500_000_000; // 500 $NDT
         staking_pool.silver_threshold = 5_000_000_000; // 5,000 $NDT
         staking_pool.gold_threshold = 50_000_000_000; // 50,000 $NDT
-        
+
         // Базовые APY для каждого уровня
         staking_pool.bronze_base_apy = 5; // 5%
         staking_pool.silver_base_apy = 10; // 10%
         staking_pool.gold_base_apy = 15; // 15%
-        
+
+        // Security parameters with time-lock
+        staking_pool.unbonding_slots = 5 * 24 * 60 * 60 / 0.4 as u64; // 5 days in slots (assuming 0.4s per slot)
+        staking_pool.last_config_update = Clock::get()?.unix_timestamp;
+        staking_pool.config_update_time_lock = 7 * 24 * 60 * 60; // 7 days time-lock
+
         Ok(())
     }
 
@@ -212,20 +217,54 @@ pub mod staking {
     ) -> Result<()> {
         let staking_pool = &mut ctx.accounts.staking_pool;
         let authority = &ctx.accounts.authority;
-        
+
         require!(authority.key() == staking_pool.authority, ErrorCode::Unauthorized);
-        
+
+        // Check time-lock for critical config changes
+        let current_time = Clock::get()?.unix_timestamp;
+        require!(
+            current_time >= staking_pool.last_config_update + staking_pool.config_update_time_lock,
+            ErrorCode::ConfigUpdateTimeLocked
+        );
+
         staking_pool.bronze_threshold = bronze_threshold;
         staking_pool.silver_threshold = silver_threshold;
         staking_pool.gold_threshold = gold_threshold;
-        
+        staking_pool.last_config_update = current_time;
+
         emit!(TierThresholdsUpdatedEvent {
             bronze_threshold,
             silver_threshold,
             gold_threshold,
-            timestamp: Clock::get()?.unix_timestamp,
+            timestamp: current_time,
         });
-        
+
+        Ok(())
+    }
+
+    // Обновление периода unstaking с time-lock
+    pub fn update_unbonding_period(ctx: Context<UpdateUnbondingPeriod>, new_period_days: u64) -> Result<()> {
+        let staking_pool = &mut ctx.accounts.staking_pool;
+        let authority = &ctx.accounts.authority;
+
+        require!(authority.key() == staking_pool.authority, ErrorCode::Unauthorized);
+        require!(new_period_days >= 1 && new_period_days <= 30, ErrorCode::InvalidUnbondingPeriod);
+
+        // Check time-lock for critical security parameter
+        let current_time = Clock::get()?.unix_timestamp;
+        require!(
+            current_time >= staking_pool.last_config_update + staking_pool.config_update_time_lock,
+            ErrorCode::ConfigUpdateTimeLocked
+        );
+
+        staking_pool.unbonding_slots = new_period_days * 24 * 60 * 60 / 0.4 as u64; // Convert days to slots
+        staking_pool.last_config_update = current_time;
+
+        emit!(UnbondingPeriodUpdatedEvent {
+            new_period_days,
+            timestamp: current_time,
+        });
+
         Ok(())
     }
 
@@ -317,16 +356,21 @@ pub struct StakingPool {
     pub authority: Pubkey,
     pub total_staked: u64,
     pub total_rewards_distributed: u64,
-    
+
     // Tier thresholds
     pub bronze_threshold: u64,
     pub silver_threshold: u64,
     pub gold_threshold: u64,
-    
+
     // Base APY for each tier
     pub bronze_base_apy: u8,
     pub silver_base_apy: u8,
     pub gold_base_apy: u8,
+
+    // Security parameters with time-lock
+    pub unbonding_slots: u64, // Unbonding period in slots (default: 5 days)
+    pub last_config_update: i64, // Timestamp of last config change
+    pub config_update_time_lock: i64, // Time-lock for config changes (7 days)
 }
 
 #[account]
@@ -402,6 +446,12 @@ pub struct TierThresholdsUpdatedEvent {
     pub bronze_threshold: u64,
     pub silver_threshold: u64,
     pub gold_threshold: u64,
+    pub timestamp: i64,
+}
+
+#[event]
+pub struct UnbondingPeriodUpdatedEvent {
+    pub new_period_days: u64,
     pub timestamp: i64,
 }
 
@@ -482,6 +532,13 @@ pub struct UpdateTierThresholds<'info> {
 }
 
 #[derive(Accounts)]
+pub struct UpdateUnbondingPeriod<'info> {
+    #[account(mut, seeds = [b"staking"], bump)]
+    pub staking_pool: Account<'info, StakingPool>,
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
 pub struct GetStakingInfo<'info> {
     #[account(seeds = [b"staker", authority.key().as_ref()], bump)]
     pub staker: Account<'info, Staker>,
@@ -499,4 +556,8 @@ pub enum ErrorCode {
     LockPeriodNotExpired,
     #[msg("No rewards to claim")]
     NoRewardsToClaim,
+    #[msg("Configuration update is time-locked")]
+    ConfigUpdateTimeLocked,
+    #[msg("Invalid unbonding period (must be 1-30 days)")]
+    InvalidUnbondingPeriod,
 }

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { readFileSync, existsSync, createReadStream } from 'fs'
+import { statSync, existsSync, createReadStream } from 'fs'
 import { join } from 'path'
+
+// File size limits
+const MAX_FILE_SIZE = 100 * 1024 * 1024 // 100MB
+const MAX_CHUNK_SIZE = 2 * 1024 * 1024 // 2MB chunks
 
 // GET /api/tracks/stream - Stream audio track
 export async function GET(
@@ -15,7 +19,7 @@ export async function GET(
         id: true,
         title: true,
         artistName: true,
-        audioUrl: true,
+        ipfsHash: true,
         duration: true,
         genre: true,
       }
@@ -28,9 +32,9 @@ export async function GET(
       )
     }
 
-    // Extract filename from audioUrl
-    const audioPath = track.audioUrl.replace('/uploads/audio/', '')
-    const fullPath = join(process.cwd(), 'uploads', 'audio', audioPath)
+    // Extract filename from ipfsHash (assuming local storage for now)
+    const audioPath = track.ipfsHash.replace('ipfs://', '').replace('/', '_')
+    const fullPath = join(process.cwd(), 'uploads', 'audio', `${audioPath}.mp3`)
 
     if (!existsSync(fullPath)) {
       return NextResponse.json(
@@ -39,14 +43,50 @@ export async function GET(
       )
     }
 
-    // Get file stats
-    const stats = readFileSync(fullPath, { flag: 'r' })
-    const fileSize = stats.length
+    // Get file stats efficiently
+    const stats = statSync(fullPath)
+    const fileSize = stats.size
+
+    // Check file size limit
+    if (fileSize > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        { error: 'File too large' },
+        { status: 413 }
+      )
+    }
 
     // Parse range header for partial content
-    const range = request.headers.get('range')
-    const start = range ? parseInt(range.replace(/\D/g, '')) : 0
-    const end = Math.min(start + 1024 * 1024, fileSize - 1) // 1MB chunks
+    const range = request.headers.get('range') || 'bytes=0-'
+    const rangeMatch = range.match(/bytes=(\d+)-(\d*)/)
+
+    if (!rangeMatch) {
+      return NextResponse.json(
+        { error: 'Invalid range header' },
+        { status: 400 }
+      )
+    }
+
+    const start = parseInt(rangeMatch[1])
+    const endStr = rangeMatch[2]
+    const end = endStr ? parseInt(endStr) : Math.min(start + MAX_CHUNK_SIZE, fileSize - 1)
+
+    // Validate range
+    if (start >= fileSize || end >= fileSize || start > end) {
+      const headers = new Headers()
+      headers.set('Content-Range', `bytes */${fileSize}`)
+      return new NextResponse(null, {
+        status: 416,
+        headers,
+      })
+    }
+
+    // Additional security: prevent large range requests
+    if (end - start > MAX_CHUNK_SIZE) {
+      return NextResponse.json(
+        { error: 'Range too large' },
+        { status: 413 }
+      )
+    }
 
     const chunkSize = end - start + 1
 
@@ -60,9 +100,10 @@ export async function GET(
     headers.set('Content-Length', chunkSize.toString())
     headers.set('Content-Type', 'audio/mpeg')
     headers.set('Content-Disposition', `inline; filename="${track.title}.mp3"`)
+    headers.set('Cache-Control', 'public, max-age=31536000') // Cache for 1 year
 
     return new NextResponse(fileStream as any, {
-      status: range ? 206 : 200,
+      status: 206,
       headers,
     })
   } catch (error) {
@@ -109,18 +150,22 @@ export async function POST(
 
     // Record play history if user is provided
     if (userId) {
+      // Validate input parameters
+      const validDuration = Math.max(0, Math.min(duration || 0, 3600)) // Max 1 hour
+      const validPosition = Math.max(0, Math.min(position || 0, 100)) // Max 100%
+
       await db.playHistory.create({
         data: {
           userId,
           trackId: params.id,
-          duration: duration || 0,
+          duration: validDuration,
           completed: completed || false,
-          position: position || 0,
+          position: validPosition,
         }
       })
 
-      // Award listening reward
-      if (completed && duration > 30) { // Only reward if listened for more than 30 seconds
+      // Award listening reward (only if completed and listened for more than 30 seconds)
+      if (completed && validDuration > 30) {
         await db.reward.create({
           data: {
             userId,
@@ -164,7 +209,7 @@ export async function HEAD(
         id: true,
         title: true,
         artistName: true,
-        audioUrl: true,
+        ipfsHash: true,
         duration: true,
         genre: true,
       }
@@ -177,9 +222,9 @@ export async function HEAD(
       )
     }
 
-    // Extract filename from audioUrl
-    const audioPath = track.audioUrl.replace('/uploads/audio/', '')
-    const fullPath = join(process.cwd(), 'uploads', 'audio', audioPath)
+    // Extract filename from ipfsHash (assuming local storage for now)
+    const audioPath = track.ipfsHash.replace('ipfs://', '').replace('/', '_')
+    const fullPath = join(process.cwd(), 'uploads', 'audio', `${audioPath}.mp3`)
 
     if (!existsSync(fullPath)) {
       return NextResponse.json(
@@ -189,8 +234,8 @@ export async function HEAD(
     }
 
     // Get file stats
-    const stats = readFileSync(fullPath, { flag: 'r' })
-    const fileSize = stats.length
+    const stats = statSync(fullPath)
+    const fileSize = stats.size
 
     const headers = new Headers()
     headers.set('Accept-Ranges', 'bytes')

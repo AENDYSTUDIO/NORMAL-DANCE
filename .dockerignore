@@ -1,12 +1,189 @@
-Dockerfile
-.dockerignore
+# Dependencies
 node_modules
-npm-debug.log
-README.md
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build outputs
 .next
+dist
+build
+
+# IDE files
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Git
 .git
-yarn.lock
-pnpm-lock.yaml
-test
+.gitignore
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# Logs
+logs
 *.log
-local-*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage
+
+# nyc test coverage
+.nyc_output
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
+.env
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# next.js build output
+.next
+
+# nuxt.js build output
+.nuxt
+
+# vuepress build output
+.vuepress/dist
+
+# Serverless directories
+.serverless
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# Temporary folders
+tmp/
+temp/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Uploads (if any)
+uploads/
+
+# Secrets and keys
+*.key
+*.pem
+*.crt
+*.p12
+*.pfx
+
+# Backup files
+*.bak
+*.backup
+
+# Swap files
+*.swp
+*.swo
+
+# Lock files (keep package-lock.json)
+yarn.lock
+
+# Testing
+test-results/
+playwright-report/
+coverage/
+
+# Documentation
+docs/
+*.md
+!README.md
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.circleci/
+
+# Monitoring
+monitoring/
+logs/
+
+# Legacy files
+legacy/
+archive/
+
+# Mobile app
+mobile-app/
+
+# Telegram
+telegram-mini-app/
+
+# Helm/K8s
+helm/
+k8s/
+
+# MCP
+mcp-config.json
+mcp-server.js
+
+# Reports
+reports/
+
+# Examples
+examples/
+
+# Grants
+grants/
+
+# Legal
+legal/
+
+# Policy
+policy/
+
+# Programs (Solana contracts)
+programs/
+
+# Scripts
+scripts/
+
+# Tests
+tests/

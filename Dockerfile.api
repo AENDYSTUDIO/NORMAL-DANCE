@@ -1,5 +1,5 @@
 # Multi-stage build for API service
-FROM node:18-alpine AS deps
+FROM node:20.18-alpine AS deps
 WORKDIR /app
 
 # Install dependencies
@@ -7,21 +7,21 @@ COPY package.json package-lock.json* ./
 RUN npm ci --only=production
 
 # Build the API service
-FROM node:18-alpine AS builder
+FROM node:20.18-alpine AS builder
 WORKDIR /app
 
 # Install dependencies
 COPY package.json package-lock.json* ./
 RUN npm ci
 
-# Copy source code
+# Copy source code (excluding files in .dockerignore)
 COPY . .
 
 # Build the API service
 RUN npm run build:api
 
 # Production image, copy all the files and run
-FROM node:18-alpine AS runner
+FROM node:20.18-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -30,8 +30,9 @@ ENV NEXT_TELEMETRY_DISABLED=1
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
-# Proper init to handle PID 1 and signals
-RUN apk add --no-cache dumb-init
+
+# Install dumb-init for proper signal handling and wget for health checks
+RUN apk add --no-cache dumb-init wget
 
 # Copy built application
 COPY --from=builder /app/.next/standalone ./
@@ -47,6 +48,10 @@ EXPOSE 8080
 
 ENV PORT=8080
 ENV HOSTNAME="0.0.0.0"
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/api/health || exit 1
 
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["node", "server.js"]

@@ -26,12 +26,12 @@ interface AudioCacheConfig extends CacheConfig {
 }
 
 class CacheManager {
-  private memoryCache = new Map<string, CacheEntry<any>>()
-  private storageCache = new Map<string, CacheEntry<any>>()
-  private redisClient?: Redis
-  private config: CacheConfig
-  private currentSize = 0
-  private stats = {
+  protected memoryCache = new Map<string, CacheEntry<any>>()
+  protected storageCache = new Map<string, CacheEntry<any>>()
+  protected redisClient?: Redis
+  protected config: CacheConfig
+  protected currentSize = 0
+  protected stats = {
     hits: 0,
     misses: 0,
     evictions: 0,
@@ -49,13 +49,25 @@ class CacheManager {
   private initializeCache() {
     // Инициализация Redis на сервере
     if (typeof window === 'undefined') {
-      this.redisClient = new Redis({
-        // Настройки подключения к Redis (из переменных окружения)
-        host: process.env.REDIS_HOST || 'localhost',
-        port: Number(process.env.REDIS_PORT) || 6379,
-        password: process.env.REDIS_PASSWORD,
-        maxRetriesPerRequest: 3
-      });
+      // Используем Upstash Redis с предоставленными учетными данными
+      if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+        // Для использования Upstash REST API с ioredis нужно использовать специальный подход
+        // или использовать прямые HTTP-запросы, но для ioredis используем стандартный подход
+        this.redisClient = new Redis(process.env.REDIS_URL || process.env.UPSTASH_REDIS_REST_URL, {
+          // Для Upstash можно использовать стандартную конфигурацию
+          password: process.env.UPSTASH_REDIS_REST_TOKEN || process.env.REDIS_PASSWORD,
+          maxRetriesPerRequest: 3,
+          lazyConnect: true, // Подключаемся только при необходимости
+        });
+      } else {
+        // Резервная конфигурация для локальной разработки
+        this.redisClient = new Redis({
+          host: process.env.REDIS_HOST || 'localhost',
+          port: Number(process.env.REDIS_PORT) || 6379,
+          password: process.env.REDIS_PASSWORD,
+          maxRetriesPerRequest: 3
+        });
+      }
       this.config.strategy = 'redis';
       console.log("Redis cache manager initialized.");
     } else if (this.config.strategy === 'hybrid') {

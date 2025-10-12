@@ -1,6 +1,6 @@
-import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js'
-import { Token, Mint, TOKEN_PROGRAM_ID } from '@solana/spl-token'
-import { NDT_PROGRAM_ID, NDT_MINT_ADDRESS } from '@/components/wallet/wallet-adapter'
+import { Connection, PublicKey, Transaction } from '@solana/web3.js'
+import { Mint, TOKEN_PROGRAM_ID, createTransferInstruction, getAssociatedTokenAddress, getAccount, createAssociatedTokenAccountInstruction } from '@solana/spl-token'
+import { NDT_MINT_ADDRESS } from '@/constants/solana'
 import { useState, useEffect } from 'react'
 
 export interface DeflationaryConfig {
@@ -50,7 +50,7 @@ export function calcDistribution(amount: number) {
 
 // Конфигурация дефляционной модели
 export const DEFALATIONARY_CONFIG: DeflationaryConfig = {
-  totalSupply: 1000000000, // 1,000,000,000 NDT
+  totalSupply: 100000, // 1,000 NDT
   burnPercentage: 2, // 2% сжигания при каждой транзакции
   stakingRewardsPercentage: 20, // 20% от сжигания идет на rewards
   treasuryPercentage: 30, // 30% от сжигания идет в казну
@@ -270,4 +270,145 @@ export const deflationUtils = {
     if (percentage < 15) return 'text-yellow-600'
     return 'text-red-600'
   },
+}
+
+// Реализация функции transferWithTax
+export async function transferWithTax(
+  connection: Connection,
+  wallet: any, // Phantom wallet adapter
+  to: PublicKey,
+  amount: number
+): Promise<string> {
+  // Проверяем, что кошелек подключен
+  if (!wallet.publicKey) {
+    throw new Error('Wallet not connected');
+  }
+
+  // Рассчитываем распределение комиссий
+  const { burn, treasury, staking, net } = calcDistribution(amount);
+
+  // Проверяем, что сумма для перевода положительная
+  if (net <= 0) {
+    throw new Error('Net amount after fees is not positive');
+  }
+
+  // Получаем адреса токен-аккаунтов
+  const sourceTokenAccount = await getAssociatedTokenAddress(NDT_MINT_ADDRESS, wallet.publicKey);
+  const destinationTokenAccount = await getAssociatedTokenAddress(NDT_MINT_ADDRESS, to);
+
+  // Проверяем, существует ли аккаунт получателя, если нет - создаем
+  let destinationAccountExists = true;
+  try {
+    await getAccount(connection, destinationTokenAccount);
+  } catch (error) {
+    destinationAccountExists = false;
+  }
+
+  // Создаем транзакцию
+  const transaction = new Transaction();
+
+  // Если аккаунт получателя не существует, добавляем инструкцию создания
+  if (!destinationAccountExists) {
+    transaction.add(createAssociatedTokenAccountInstruction(
+      wallet.publicKey, // payer
+      destinationTokenAccount, // associated token account
+      to, // owner
+      NDT_MINT_ADDRESS // mint
+    ));
+  }
+
+  // Добавляем инструкцию перевода основной суммы (после вычета комиссий)
+  const transferInstruction = createTransferInstruction(
+    sourceTokenAccount,
+    destinationTokenAccount,
+    wallet.publicKey,
+    net
+  );
+  transaction.add(transferInstruction);
+
+  // Добавляем инструкции для казны (если сумма > 0)
+  if (treasury > 0) {
+    // Для казны нужно создать аккаунт, если его нет
+    const treasuryAddress = new PublicKey(process.env.NEXT_PUBLIC_TREASURY_ADDRESS || 'Treasury11111111');
+    const treasuryTokenAccount = await getAssociatedTokenAddress(NDT_MINT_ADDRESS, treasuryAddress);
+    
+    // Проверяем существование аккаунта казны
+    let treasuryAccountExists = true;
+    try {
+      await getAccount(connection, treasuryTokenAccount);
+    } catch (error) {
+      treasuryAccountExists = false;
+    }
+
+    // Если аккаунт не существует, создаем
+    if (!treasuryAccountExists) {
+      transaction.add(createAssociatedTokenAccountInstruction(
+        wallet.publicKey, // payer
+        treasuryTokenAccount, // associated token account
+        treasuryAddress, // owner
+        NDT_MINT_ADDRESS // mint
+      ));
+    }
+
+    // Добавляем инструкцию перевода в казну
+    const treasuryTransferInstruction = createTransferInstruction(
+      sourceTokenAccount,
+      treasuryTokenAccount,
+      wallet.publicKey,
+      treasury
+    );
+    transaction.add(treasuryTransferInstruction);
+  }
+
+  // Добавляем инструкции для стейкинга (если сумма > 0)
+  if (staking > 0) {
+    // Для стейкинга нужно создать аккаунт, если его нет
+    const stakingAddress = new PublicKey(process.env.NEXT_PUBLIC_STAKING_ADDRESS || 'Staking11111111');
+    const stakingTokenAccount = await getAssociatedTokenAddress(NDT_MINT_ADDRESS, stakingAddress);
+    
+    // Проверяем существование аккаунта стейкинга
+    let stakingAccountExists = true;
+    try {
+      await getAccount(connection, stakingTokenAccount);
+    } catch (error) {
+      stakingAccountExists = false;
+    }
+
+    // Если аккаунт не существует, создаем
+    if (!stakingAccountExists) {
+      transaction.add(createAssociatedTokenAccountInstruction(
+        wallet.publicKey, // payer
+        stakingTokenAccount, // associated token account
+        stakingAddress, // owner
+        NDT_MINT_ADDRESS // mint
+      ));
+    }
+
+    // Добавляем инструкцию перевода в стейкинг
+    const stakingTransferInstruction = createTransferInstruction(
+      sourceTokenAccount,
+      stakingTokenAccount,
+      wallet.publicKey,
+      staking
+    );
+    transaction.add(stakingTransferInstruction);
+  }
+
+  // Получаем последний blockhash для транзакции
+  const { blockhash } = await connection.getLatestBlockhash();
+  transaction.recentBlockhash = blockhash;
+  transaction.feePayer = wallet.publicKey;
+
+  // Проверяем инструкции транзакции
+  if (transaction.instructions.length === 0) {
+    throw new Error('Transaction has no instructions');
+  }
+
+  // Отправляем транзакцию через кошелек
+  const signature = await wallet.sendTransaction(transaction, connection);
+
+  // Подтверждаем транзакцию
+  await connection.confirmTransaction(signature);
+
+  return signature;
 }

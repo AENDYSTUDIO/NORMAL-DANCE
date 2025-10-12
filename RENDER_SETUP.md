@@ -6,8 +6,8 @@
 
 Проект состоит из двух независимых сервисов:
 
-1. **dnb1st.ru** - основной сайт с платформой для музыки
-2. **dnb1st.store** - магазин и монетизация
+1. ** - основной сайт с платформой для музыки
+2. ** - магазин и монетизация
 
 ## Файлы конфигурации
 
@@ -40,8 +40,7 @@
 
 1. Зайдите в ваш аккаунт Render
 2. Создайте два новых веб-сервиса:
-   - **dnb1st.ru**
-   - **dnb1st.store**
+
 
 ### 2. Настройка переменных окружения
 
@@ -52,9 +51,9 @@
 ```bash
 # Базовые настройки
 NODE_ENV=production
-BASE_URL=https://dnb1st.ru
-NEXT_PUBLIC_BASE_URL=https://dnb1st.ru
-SERVICE_NAME=dnb1st-ru
+BASE_URL=
+NEXT_PUBLIC_BASE_URL=
+SERVICE_NAME=
 
 # База данных
 DATABASE_URL=postgresql://...
@@ -63,7 +62,7 @@ DATABASE_URL=postgresql://...
 REDIS_URL=redis://...
 
 # CDN
-CDN_URL=https://cdn.dnb1st.ru
+CDN_URL=
 
 # Аналитика
 GOOGLE_ANALYTICS_ID=G-XXXXXXXXXX
@@ -86,9 +85,9 @@ SENTRY_DSN=...
 ```bash
 # Базовые настройки
 NODE_ENV=production
-BASE_URL=https://dnb1st.store
-NEXT_PUBLIC_BASE_URL=https://dnb1st.store
-SERVICE_NAME=dnb1st-store
+BASE_URL=
+NEXT_PUBLIC_BASE_URL=
+SERVICE_NAME=
 
 # База данных
 DATABASE_URL=postgresql://...
@@ -97,7 +96,7 @@ DATABASE_URL=postgresql://...
 REDIS_URL=redis://...
 
 # CDN
-CDN_URL=https://cdn.dnb1st.store
+CDN_URL=
 
 # Платежные системы
 STRIPE_SECRET_KEY=...
@@ -120,8 +119,7 @@ SENTRY_DSN=...
 
 Настройте health check URLs для каждого сервиса:
 
-- **dnb1st.ru**: `https://dnb1st.ru/api/health`
-- **dnb1st.store**: `https://dnb1st.store/api/health`
+
 
 ### 4. Автоматический деплой
 
@@ -268,16 +266,16 @@ GET /api/health/external
 
 ```bash
 # Тест общего health check
-curl https://dnb1st.ru/api/health
+curl 
 
 # Тест базы данных
-curl https://dnb1st.ru/api/health/database
+curl 
 
 # Тест Redis
-curl https://dnb1st.ru/api/health/cache
+curl 
 
 # Тест внешних сервисов
-curl https://dnb1st.ru/api/health/external
+curl 
 ```
 
 ### 2. Мониторинг тестов
@@ -331,4 +329,4 @@ curl https://dnb1st.ru/api/health/external
 
 ## Заключение
 
-Эта настройка обеспечивает надежное развертывание и мониторинг проекта DNB1ST на Render. Все компоненты работают вместе для обеспечения высокой доступности, производительности и безопасности.
+Эта настройка обеспечивает надежное развертывание и мониторинг проекта  на Render. Все компоненты работают вместе для обеспечения высокой доступности, производительности и безопасности.

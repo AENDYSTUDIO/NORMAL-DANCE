@@ -1,13 +1,17 @@
 // libs/redis.ts
 import { Redis } from '@upstash/redis'
 
-if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+// Using the provided credentials from the user task
+const UPSTASH_REDIS_REST_URL = "https://composed-lemur-17971.upstash.io";
+const UPSTASH_REDIS_REST_TOKEN = "AUYzAAIncDIxODFlMWMzYmU2NDE0NzBjOGM1ZGY0NmQwYjI0YThhOXAyMTc5NzE";
+
+if (!UPSTASH_REDIS_REST_URL || !UPSTASH_REDIS_REST_TOKEN) {
   throw new Error('Missing Upstash Redis configuration')
 }
 
 export const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  url: UPSTASH_REDIS_REST_URL,
+  token: UPSTASH_REDIS_REST_TOKEN,
 })
 
 // Кеширование данных

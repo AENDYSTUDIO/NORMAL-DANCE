@@ -12,12 +12,18 @@ pub mod ndt {
     pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
         let ndt = &mut ctx.accounts.ndt;
         let authority = &ctx.accounts.authority;
-        
+
         ndt.authority = authority.key();
         ndt.total_supply = 0;
         ndt.burn_percentage = 1; // 1% сжигание при транзакциях
         ndt.staking_apr = 5; // 5% базовый APY для стейкинга
-        
+
+        // Security parameters
+        ndt.max_supply = 100_000_000_000; // 100M NDT hard cap
+        ndt.halving_interval = 180 * 24 * 60 * 60; // 180 days in seconds
+        ndt.last_halving = Clock::get()?.unix_timestamp;
+        ndt.emission_rate = 10; // 10 NDT per SOL per day (initial)
+
         Ok(())
     }
 
@@ -26,16 +32,17 @@ pub mod ndt {
         let ndt = &mut ctx.accounts.ndt;
         let mint_account = &ctx.accounts.mint;
         let authority = &ctx.accounts.authority;
-        
+
         require!(authority.key() == ndt.authority, ErrorCode::Unauthorized);
-        
+        require!(ndt.total_supply.checked_add(amount).unwrap() <= ndt.max_supply, ErrorCode::MaxSupplyExceeded);
+
         // Увеличиваем общий объем
         ndt.total_supply = ndt.total_supply.checked_add(amount).unwrap();
-        
+
         // Создаем токены
         let seeds = &[b"ndt".as_ref(), &[ctx.bumps.ndt]];
         let signer = &[&seeds[..]];
-        
+
         anchor_spl::token::mint_to(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
@@ -48,7 +55,7 @@ pub mod ndt {
             signer,
             amount,
         )?;
-        
+
         Ok(())
     }
 
@@ -196,11 +203,14 @@ pub mod ndt {
         let staking_account = &mut ctx.accounts.staking_account;
         let rewards_account = &mut ctx.accounts.rewards_account;
         let authority = &ctx.accounts.authority;
-        
+
         let current_time = Clock::get()?.unix_timestamp;
         let time_elapsed = current_time.checked_sub(staking_account.last_claim_time).unwrap();
-        
-        // Рассчитываем накопленные rewards
+
+        // Check for halving
+        let halving_occured = check_and_apply_halving(ndt, current_time);
+
+        // Рассчитываем накопленные rewards с учетом текущего emission rate
         let rewards = staking_account.amount
             .checked_mul(staking_account.apr as u64)
             .unwrap()
@@ -209,14 +219,18 @@ pub mod ndt {
             .checked_div(365 * 24 * 60 * 60) // Год в секундах
             .unwrap()
             .checked_div(100) // APR в процентах
-            .unwrap();
-        
+            .unwrap()
+            .checked_mul(ndt.emission_rate) // Применяем текущий emission rate
+            .unwrap()
+            .checked_div(10); // Нормализация (emission_rate = 10 = 100%)
+
         require!(rewards > 0, ErrorCode::NoRewardsToClaim);
-        
+        require!(ndt.total_supply.checked_add(rewards).unwrap() <= ndt.max_supply, ErrorCode::MaxSupplyExceeded);
+
         // Выпускаем новые токены как rewards
         let seeds = &[b"ndt".as_ref(), &[ctx.bumps.ndt]];
         let signer = &[&seeds[..]];
-        
+
         anchor_spl::token::mint_to(
             CpiContext::new_with_signer(
                 ctx.accounts.token_program.to_account_info(),
@@ -229,16 +243,37 @@ pub mod ndt {
             signer,
             rewards,
         )?;
-        
-        // Обновляем время последнего claim
+
+        // Обновляем общий объем и время последнего claim
+        ndt.total_supply = ndt.total_supply.checked_add(rewards).unwrap();
         staking_account.last_claim_time = current_time;
-        
+
         emit!(ClaimRewardsEvent {
             staker: staker.key(),
             rewards,
             timestamp: current_time,
         });
-        
+
+        Ok(())
+    }
+
+    // Принудительное применение halving (для администратора)
+    pub fn apply_halving(ctx: Context<ApplyHalving>) -> Result<()> {
+        let ndt = &mut ctx.accounts.ndt;
+        let authority = &ctx.accounts.authority;
+
+        require!(authority.key() == ndt.authority, ErrorCode::Unauthorized);
+
+        let current_time = Clock::get()?.unix_timestamp;
+        let halving_occured = check_and_apply_halving(ndt, current_time);
+
+        require!(halving_occured, ErrorCode::HalvingNotDue);
+
+        emit!(HalvingAppliedEvent {
+            new_emission_rate: ndt.emission_rate,
+            timestamp: current_time,
+        });
+
         Ok(())
     }
 }
@@ -268,6 +303,20 @@ fn get_time_multiplier(lock_period: u64) -> u64 {
     }
 }
 
+// Check and apply halving if enough time has passed
+fn check_and_apply_halving(ndt: &mut NdtState, current_time: i64) -> bool {
+    let time_since_last_halving = current_time - ndt.last_halving;
+
+    if time_since_last_halving >= ndt.halving_interval {
+        // Apply halving: reduce emission rate by half
+        ndt.emission_rate = ndt.emission_rate.checked_div(2).unwrap_or(1); // Minimum 1
+        ndt.last_halving = current_time;
+        true
+    } else {
+        false
+    }
+}
+
 // Accounts
 #[account]
 pub struct NdtState {
@@ -275,6 +324,12 @@ pub struct NdtState {
     pub total_supply: u64,
     pub burn_percentage: u64, // Percentage of tokens burned per transaction
     pub staking_apr: u64,    // Base APR for staking
+
+    // Economic parameters with hard caps
+    pub max_supply: u64,        // Hard cap on total supply (100M NDT)
+    pub halving_interval: i64,  // Time between halvings (180 days)
+    pub last_halving: i64,      // Timestamp of last halving
+    pub emission_rate: u64,     // Current emission rate (halves over time)
 }
 
 #[account]
@@ -321,10 +376,16 @@ pub struct ClaimRewardsEvent {
     pub timestamp: i64,
 }
 
+#[event]
+pub struct HalvingAppliedEvent {
+    pub new_emission_rate: u64,
+    pub timestamp: i64,
+}
+
 // Contexts
 #[derive(Accounts)]
 pub struct Initialize<'info> {
-    #[account(init, payer = authority, seeds = [b"ndt"], bump)]
+    #[account(init, payer = authority, space = 8 + 32 + 8 + 8 + 8 + 8 + 8 + 8 + 8, seeds = [b"ndt"], bump)]
     pub ndt: Account<'info, NdtState>,
     #[account(mut)]
     pub authority: Signer<'info>,
@@ -408,6 +469,13 @@ pub struct ClaimRewards<'info> {
     pub token_program: Program<'info, Token>,
 }
 
+#[derive(Accounts)]
+pub struct ApplyHalving<'info> {
+    #[account(mut, seeds = [b"ndt"], bump)]
+    pub ndt: Account<'info, NdtState>,
+    pub authority: Signer<'info>,
+}
+
 // Error codes
 #[error_code]
 pub enum ErrorCode {
@@ -419,4 +487,8 @@ pub enum ErrorCode {
     LockPeriodNotExpired,
     #[msg("No rewards to claim")]
     NoRewardsToClaim,
+    #[msg("Maximum supply exceeded")]
+    MaxSupplyExceeded,
+    #[msg("Halving is not due yet")]
+    HalvingNotDue,
 }

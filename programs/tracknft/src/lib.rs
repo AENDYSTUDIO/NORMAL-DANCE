@@ -33,9 +33,19 @@ pub mod tracknft {
         let track = &mut ctx.accounts.track;
         let artist = &ctx.accounts.artist;
         let authority = &ctx.accounts.authority;
-        
+
+        // Критическая проверка безопасности: только владелец аккаунта может минтить от своего имени
+        require!(artist.key() == authority.key(), ErrorCode::Unauthorized);
+
         require!(royalty_percentage <= 50, ErrorCode::RoyaltyTooHigh);
-        
+        require!(track_name.len() <= 200, ErrorCode::TrackNameTooLong);
+        require!(artist_name.len() <= 200, ErrorCode::ArtistNameTooLong);
+        require!(price > 0, ErrorCode::InvalidPrice);
+
+        // Генерируем уникальный track_id используя counter вместо timestamp
+        let current_counter = track_nft.track_counter;
+        track_nft.track_counter = track_nft.track_counter.checked_add(1).unwrap();
+
         // Инициализируем NFT
         track.track_name = track_name;
         track.artist_name = artist_name;
@@ -48,19 +58,20 @@ pub mod tracknft {
         track.total_royalties_paid = 0;
         track.creator = artist.key();
         track.mint_time = Clock::get()?.unix_timestamp;
-        
+
         // Увеличиваем счетчик треков
         track_nft.total_tracks = track_nft.total_tracks.checked_add(1).unwrap();
-        
+
         emit!(TrackCreatedEvent {
             track: track.key(),
             creator: artist.key(),
             track_name: track.track_name.clone(),
             price,
             royalty_percentage,
+            track_id: current_counter,
             timestamp: Clock::get()?.unix_timestamp,
         });
-        
+
         Ok(())
     }
 
@@ -274,6 +285,7 @@ pub struct TrackNftState {
     pub authority: Pubkey,
     pub royalty_percentage: u8, // Default royalty percentage
     pub total_tracks: u64,
+    pub track_counter: u64, // Counter for unique track IDs to prevent PDA collisions
 }
 
 #[account]
@@ -306,6 +318,7 @@ pub struct TrackCreatedEvent {
     pub track_name: String,
     pub price: u64,
     pub royalty_percentage: u8,
+    pub track_id: u64,
     pub timestamp: i64,
 }
 
@@ -379,7 +392,7 @@ pub struct CreateTrack<'info> {
         init,
         payer = authority,
         space = 8 + 32 + 32 + 32 + 200 + 200 + 8 + 1 + 8 + 8 + 8 + 32 + 8,
-        seeds = [b"track", artist.key().as_ref(), &Clock::get()?.unix_timestamp.to_le_bytes()],
+        seeds = [b"track", artist.key().as_ref(), &track_nft.track_counter.to_le_bytes()],
         bump
     )]
     pub track: Account<'info, Track>,
@@ -466,4 +479,10 @@ pub enum ErrorCode {
     CreatorCannotBuy,
     #[msg("Royalty percentage too high (max 50%)")]
     RoyaltyTooHigh,
+    #[msg("Track name too long (max 200 characters)")]
+    TrackNameTooLong,
+    #[msg("Artist name too long (max 200 characters)")]
+    ArtistNameTooLong,
+    #[msg("Invalid price (must be greater than 0)")]
+    InvalidPrice,
 }
