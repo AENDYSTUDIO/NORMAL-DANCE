@@ -180,6 +180,12 @@ const nextConfig: NextConfig = {
   async rewrites() {
     return [
       {
+        // Ensure Socket.IO transport, polling, and EIO paths are proxied
+        source: "/socket.io/:path*",
+        destination: "/api/socketio/:path*",
+      },
+      // Keep base path mapping for clients that hit the root endpoint
+      {
         source: "/socket.io",
         destination: "/api/socketio",
       },
