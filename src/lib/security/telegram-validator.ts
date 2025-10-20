@@ -144,7 +144,8 @@ export function validateTelegramInitData(
     }
     
     try {
-      const user: TelegramUser = JSON.parse(userParam);
+      // The 'user' param is URL-encoded JSON per Telegram spec
+      const user: TelegramUser = JSON.parse(decodeURIComponent(userParam));
       return { 
         valid: true, 
         userId: user.id.toString(),
@@ -222,8 +223,9 @@ export function extractUserId(initData: string): string | null {
     const params = new URLSearchParams(initData);
     const userParam = params.get('user');
     if (!userParam) return null;
-    
-    const user = JSON.parse(userParam);
+
+    // Decode URL-encoded JSON before parsing
+    const user = JSON.parse(decodeURIComponent(userParam));
     return user.id?.toString() || null;
   } catch {
     return null;
