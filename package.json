@@ -210,7 +210,7 @@
     "tailwindcss-animate": "^1.0.7",
     "ts-jest": "^29.4.5",
     "tsx": "^4.20.6",
-    "typescript-eslint": "^8.45.0"
+    "typescript-eslint": "^8.46.1"
   },
   "keywords": [
     "music",
