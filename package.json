@@ -151,7 +151,7 @@
     "react-hook-form": "^7.62.0",
     "react-resizable-panels": "^3.0.6",
     "react-window": "^2.2.1",
-    "recharts": "^3.2.1",
+    "recharts": "^3.3.0",
     "redis": "^4.6.0",
     "siwe": "^3.0.0",
     "socket.io": "^4.8.1",
